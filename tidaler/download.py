@@ -16,7 +16,7 @@ import tempfile
 import time
 from collections.abc import Callable
 from concurrent import futures
-from threading import Event
+from threading import Event, Lock
 from uuid import uuid4
 
 import m3u8
@@ -121,6 +121,8 @@ class Download:
     progress_overall: Progress
     event_abort: Event
     event_run: Event
+    _path_locks: dict[pathlib.Path, Lock]
+    _path_locks_guard: Lock
 
     def __init__(
         self,
@@ -161,6 +163,8 @@ class Download:
         self.path_base = path_base
         self.event_abort = event_abort
         self.event_run = event_run
+        self._path_locks = {}
+        self._path_locks_guard = Lock()
 
         if not self.settings.data.path_binary_ffmpeg:
             self.settings.data.path_binary_ffmpeg = shutil.which('ffmpeg')
@@ -1021,7 +1025,8 @@ class Download:
             self.fn_logger.info(f"Downloaded item '{name_builder_item(media)}'.")
 
             # Move final file to the configured destination directory.
-            shutil.move(tmp_path_file, path_media_dst)
+            if not self._move_file(tmp_path_file, path_media_dst, skip_existing=self.skip_existing):
+                return False
 
             return True
 
@@ -1158,7 +1163,8 @@ class Download:
 
             if not skip_file:
                 self.fn_logger.debug(f"Move: {path_media_src} -> {path_media_dst}")
-                shutil.move(path_media_src, path_media_dst)
+                if not self._move_file(path_media_src, path_media_dst, skip_existing=self.skip_existing):
+                    return path_media_src
 
             if not skip_symlink:
                 self.fn_logger.debug(f"Symlink: {path_media_src} -> {path_media_dst}")
@@ -1199,26 +1205,61 @@ class Download:
 
         return quality_old
 
-    def _move_file(self, path_file_source: pathlib.Path, path_file_destination: str | pathlib.Path) -> bool:
+    def _lock_for_path(self, path_file: pathlib.Path) -> Lock:
+        """Return a shared lock for a destination path.
+
+        Args:
+            path_file (pathlib.Path): File path that will be written.
+
+        Returns:
+            Lock: Lock dedicated to the normalized destination path.
+        """
+        path_normalized: pathlib.Path = path_file.expanduser().absolute()
+
+        with self._path_locks_guard:
+            if path_normalized not in self._path_locks:
+                self._path_locks[path_normalized] = Lock()
+
+            return self._path_locks[path_normalized]
+
+    def _move_file(
+        self,
+        path_file_source: pathlib.Path,
+        path_file_destination: str | pathlib.Path,
+        skip_existing: bool | None = None,
+    ) -> bool:
         """Move a file from source to destination.
 
         Args:
             path_file_source (pathlib.Path): Source file path.
             path_file_destination (str | pathlib.Path): Destination file path.
+            skip_existing (bool | None, optional): Whether to leave an existing destination untouched.
+                Defaults to the downloader's skip setting.
 
         Returns:
-            bool: True if moved, False otherwise.
+            bool: True if moved or intentionally skipped, False otherwise.
         """
-        result: bool
+        result: bool = False
+        path_destination: pathlib.Path = pathlib.Path(path_file_destination)
+        skip_destination: bool = self.skip_existing if skip_existing is None else skip_existing
 
         # Check if the file was downloaded
-        if path_file_source and path_file_source.is_file():
-            # Move it.
-            shutil.move(path_file_source, path_file_destination)
+        if not path_file_source or not path_file_source.is_file():
+            return result
+
+        path_destination.parent.mkdir(parents=True, exist_ok=True)
+
+        with self._lock_for_path(path_destination):
+            if skip_destination and path_destination.exists():
+                return True
+
+            try:
+                shutil.move(path_file_source, path_destination)
+            except (OSError, shutil.Error):
+                self.fn_logger.exception(f"Could not move file: {path_file_source} -> {path_destination}")
+                return False
 
             result = True
-        else:
-            result = False
 
         return result
 
