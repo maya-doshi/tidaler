@@ -1,8 +1,10 @@
 import pathlib
+from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
 import pytest
 
+from tidaler.constants import DownsampleTarget
 from tidaler.download import Download
 
 
@@ -74,3 +76,96 @@ def test_move_file_skip_existing_keeps_destination(download_instance: Download, 
     assert result is True
     assert destination_path.read_bytes() == b"existing-cover"
     assert not source_path.exists()
+
+
+def test_retry_file_operation_does_not_sleep_after_final_attempt(download_instance: Download) -> None:
+    """Verify file operation retries do not delay after the final failed attempt.
+
+    Args:
+        download_instance (Download): Download instance under test.
+    """
+
+    def operation() -> bool:
+        raise PermissionError(32, "The process cannot access the file because it is being used by another process")
+
+    with patch("tidaler.download.time.sleep") as sleep_mock:
+        result: bool = download_instance._retry_file_operation(operation, "locked operation")
+
+    assert result is False
+    assert sleep_mock.call_count == 1
+
+
+def test_media_move_and_symlink_skips_symlink_when_unlink_fails(
+    download_instance: Download,
+    tmp_path: pathlib.Path,
+) -> None:
+    """Verify symlink creation is skipped when the original source cannot be removed.
+
+    Args:
+        download_instance (Download): Download instance under test.
+        tmp_path (pathlib.Path): Temporary test directory.
+    """
+    source_path: pathlib.Path = tmp_path / "source.flac"
+    source_path.write_text("audio", encoding="utf-8")
+
+    download_instance.path_base = str(tmp_path / "library")
+    download_instance.skip_existing = False
+    download_instance.settings = SimpleNamespace(
+        data=SimpleNamespace(
+            filename_delimiter_artist=", ",
+            filename_delimiter_album_artist=", ",
+            format_track="Tracks/{artist_name} - {track_title}",
+            use_primary_album_artist=False,
+        ),
+    )
+
+    with (
+        patch("tidaler.download.format_path_media", return_value="Tracks/Artist - Title"),
+        patch.object(download_instance, "_move_file", return_value=True),
+        patch.object(download_instance, "_unlink_with_retry", return_value=False),
+        patch.object(pathlib.Path, "symlink_to") as symlink_to_mock,
+    ):
+        result_path: pathlib.Path = download_instance.media_move_and_symlink(
+            MagicMock(),
+            source_path,
+            ".flac",
+        )
+
+    assert result_path == tmp_path / "library" / "Tracks" / "Artist - Title.flac"
+    symlink_to_mock.assert_not_called()
+    download_instance.fn_logger.error.assert_called_once()
+
+
+def test_downsample_audio_raises_when_output_move_fails(
+    download_instance: Download,
+    tmp_path: pathlib.Path,
+) -> None:
+    """Verify downsample replacement failures are propagated.
+
+    Args:
+        download_instance (Download): Download instance under test.
+        tmp_path (pathlib.Path): Temporary test directory.
+    """
+    source_path: pathlib.Path = tmp_path / "source.flac"
+    source_path.write_text("audio", encoding="utf-8")
+    download_instance.settings = SimpleNamespace(
+        data=SimpleNamespace(
+            downsample_target=DownsampleTarget.BIT16_48,
+            path_binary_ffmpeg="ffmpeg",
+        ),
+    )
+    flac_mock: MagicMock = MagicMock()
+    flac_mock.info.sample_rate = 96000
+    flac_mock.info.bits_per_sample = 24
+    ffmpeg_mock: MagicMock = MagicMock()
+    ffmpeg_mock.option.return_value = ffmpeg_mock
+    ffmpeg_mock.input.return_value = ffmpeg_mock
+    ffmpeg_mock.output.return_value = ffmpeg_mock
+
+    with (
+        patch("tidaler.download.FLAC", return_value=flac_mock),
+        patch("tidaler.download.FFmpeg", return_value=ffmpeg_mock),
+        patch.object(download_instance, "_move_file", return_value=False),
+        pytest.raises(OSError),
+    ):
+        download_instance._downsample_audio(source_path)

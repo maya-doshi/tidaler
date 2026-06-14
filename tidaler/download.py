@@ -1169,8 +1169,10 @@ class Download:
                 self.fn_logger.debug(f"Symlink: {path_media_src} -> {path_media_dst}")
                 path_media_dst_relative: pathlib.Path = path_media_dst.relative_to(path_media_src.parent, walk_up=True)
 
-                self._unlink_with_retry(path_media_src)
-                path_media_src.symlink_to(path_media_dst_relative)
+                if self._unlink_with_retry(path_media_src):
+                    path_media_src.symlink_to(path_media_dst_relative)
+                else:
+                    self.fn_logger.error(f"Unable to replace source with symlink: {path_media_src}")
 
         return path_media_dst
 
@@ -1232,6 +1234,8 @@ class Download:
                 return operation()
             except OSError as error:
                 error_last = error
+                if attempt == self._FILE_OPERATION_RETRIES - 1:
+                    break
                 delay_sec: float = self._file_operation_retry_delay(attempt)
                 self.fn_logger.debug(f"File operation failed ({description}); retrying in {delay_sec:.1f}s: {error}")
                 time.sleep(delay_sec)
@@ -1947,7 +1951,9 @@ class Download:
             )
             ffmpeg.execute()
 
-            self._move_file(path_out, path_file, overwrite=True)
+            if not self._move_file(path_out, path_file, overwrite=True):
+                self.fn_logger.error(f"Unable to replace downsampled file: {path_file}")
+                raise OSError(path_file)
 
         return path_file
 
