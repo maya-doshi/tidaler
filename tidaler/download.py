@@ -1253,11 +1253,19 @@ class Download:
             if skip_destination and path_destination.exists():
                 return True
 
-            try:
-                shutil.move(path_file_source, path_destination)
-            except (OSError, shutil.Error):
-                self.fn_logger.exception(f"Could not move file: {path_file_source} -> {path_destination}")
-                return False
+            for attempt in range(5):
+                try:
+                    shutil.move(path_file_source, path_destination)
+                    break
+                except PermissionError as e:
+                    # Windows can transiently lock files (e.g., AV/indexer). Retry WinError 32 a few times.
+                    if getattr(e, "winerror", None) != 32 or attempt == 4:
+                        self.fn_logger.exception(f"Could not move file: {path_file_source} -> {path_destination}")
+                        return False
+                    time.sleep(0.2 * (attempt + 1))
+                except (OSError, shutil.Error):
+                    self.fn_logger.exception(f"Could not move file: {path_file_source} -> {path_destination}")
+                    return False
 
             result = True
 
