@@ -1953,7 +1953,7 @@ class Download:
 
             if not self._move_file(path_out, path_file, overwrite=True):
                 self.fn_logger.error(f"Unable to replace downsampled file: {path_file}")
-                raise OSError(path_file)
+                raise OSError(f"Unable to replace downsampled file: {path_file}")
 
         return path_file
 
