@@ -64,7 +64,7 @@ class Settings:
     api_rate_limit_batch_size: int = 20  # Number of albums to process before applying rate limit delay
     api_rate_limit_delay_sec: float = 3.0  # Delay in seconds between batches to avoid rate limiting
     initial_key_format: InitialKey = InitialKey.ALPHANUMERIC
-    case_sensitivity_when_downloading_repeated_tracks: bool = True
+    skip_existing_case_sensitive: bool = True
 
 
 @dataclass_json
@@ -144,7 +144,7 @@ class HelpSettings:
     api_rate_limit_batch_size: str = "Number of albums to process before applying rate limit delay (tweaking variable)."
     api_rate_limit_delay_sec: str = "Delay in seconds between batches to avoid API rate limiting (tweaking variable)."
     initial_key_format: str = "Format for Initial Key metadata tag: 'alphanumeric' (default) or 'classic'."
-    case_sensitivity_when_downloading_repeated_tracks: str = (
+    skip_existng_case_sensitive: str = (
         "When True, file existence checks are case-sensitive (default). When False, they are case-insensitive."
     )
 

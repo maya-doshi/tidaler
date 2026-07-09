@@ -739,7 +739,7 @@ class Download:
             skip_file: bool = check_file_exists(
                 path_media_dst,
                 extension_ignore=False,
-                case_sensitive=self.settings.data.case_sensitivity_when_downloading_repeated_tracks,
+                case_sensitive=self.settings.data.skip_existing_case_sensitive,
             )
 
             if self.settings.data.symlink_to_track and not isinstance(media, Video):
@@ -758,7 +758,7 @@ class Download:
                 file_exists_track_dir: bool = check_file_exists(
                     path_media_track_dir,
                     extension_ignore=False,
-                    case_sensitive=self.settings.data.case_sensitivity_when_downloading_repeated_tracks,
+                    case_sensitive=self.settings.data.skip_existing_case_sensitive,
                 )
                 file_exists_playlist_dir: bool = (
                     not file_exists_track_dir and skip_file and not path_media_dst.is_symlink()
@@ -1161,7 +1161,7 @@ class Download:
                 skip_file: bool = check_file_exists(
                     path_media_dst,
                     extension_ignore=False,
-                    case_sensitive=self.settings.data.case_sensitivity_when_downloading_repeated_tracks,
+                    case_sensitive=self.settings.data.skip_existing_case_sensitive,
                 )
                 skip_symlink: bool = path_media_src.is_symlink()
             else:
