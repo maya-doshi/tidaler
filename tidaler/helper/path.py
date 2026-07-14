@@ -633,16 +633,21 @@ def file_unique_suffix(path_file: pathlib.Path, separator: str = "_") -> str:
     return unique_suffix
 
 
-def check_file_exists(path_file: pathlib.Path, extension_ignore: bool = False) -> bool:
+def check_file_exists(path_file: pathlib.Path, extension_ignore: bool = False, case_sensitive: bool = True) -> bool:
     """Check if a file exists.
 
     Args:
         path_file (pathlib.Path): The file path to check.
         extension_ignore (bool, optional): Whether to ignore the file extension. Defaults to False.
+        case_sensitive (bool, optional): When True (default), uses exact name matching.
+            When False, performs case-insensitive matching on case-sensitive filesystems.
 
     Returns:
         bool: True if the file exists, False otherwise.
     """
+    if not case_sensitive:
+        return _check_file_exists_case_insensitive(path_file, extension_ignore)
+
     if extension_ignore:
         path_file_stem: str = pathlib.Path(path_file).stem
         path_parent: pathlib.Path = pathlib.Path(path_file).parent
@@ -653,6 +658,33 @@ def check_file_exists(path_file: pathlib.Path, extension_ignore: bool = False) -
         path_files: list[str] = [str(path_file)]
 
     return any(os.path.isfile(_file) for _file in path_files)
+
+
+def _check_file_exists_case_insensitive(path_file: pathlib.Path, extension_ignore: bool = False) -> bool:
+    """Check if a file exists using case-insensitive matching.
+
+    Args:
+        path_file (pathlib.Path): The file path to check.
+        extension_ignore (bool, optional): Whether to ignore the file extension. Defaults to False.
+
+    Returns:
+        bool: True if a file with matching name (case-insensitive) exists, False otherwise.
+    """
+    path_file = pathlib.Path(path_file)
+    parent: pathlib.Path = path_file.parent
+
+    if not parent.is_dir():
+        return False
+
+    if extension_ignore:
+        stem_lower: str = path_file.stem.lower()
+        existing_files: list[str] = [f.lower() for f in os.listdir(parent) if os.path.isfile(parent / f)]
+
+        return any(os.path.splitext(f)[0] == stem_lower for f in existing_files)
+
+    name_lower: str = path_file.name.lower()
+
+    return any(f.lower() == name_lower for f in os.listdir(parent) if os.path.isfile(parent / f))
 
 
 def resource_path(relative_path: str) -> str:
