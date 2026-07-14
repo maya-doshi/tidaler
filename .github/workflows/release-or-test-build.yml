@@ -34,7 +34,7 @@ jobs:
     runs-on: ubuntu-24.04
     steps:
       - name: Check out
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
       - name: Set up the environment
         uses: ./.github/actions/setup-poetry-env
       - name: Export tag
@@ -62,7 +62,7 @@ jobs:
     runs-on: ubuntu-24.04
     steps:
       - name: Check out
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
       - name: Set up the environment
         uses: ./.github/actions/setup-poetry-env
       - name: Deploy documentation
@@ -159,7 +159,7 @@ jobs:
     runs-on: ${{ matrix.os }}
     steps:
       - name: Check out
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
       - name: Set up the environment
         uses: ./.github/actions/setup-poetry-env
       - name: Build with pyinstaller for ${{matrix.TARGET}}
