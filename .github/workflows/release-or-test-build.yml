@@ -166,7 +166,7 @@ jobs:
         run: ${{matrix.CMD_BUILD}}
       - name: Upload Build Artifact (workflow_dispatch / test-build)
         if: github.event_name == 'workflow_dispatch' || github.ref == 'refs/heads/test-build'
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: ${{needs.compute.outputs.OUT_NAME_FILE}}_${{matrix.OS_ARCH}}
           path: ./dist/${{needs.compute.outputs.OUT_NAME_FILE}}_${{matrix.OS_ARCH}}${{needs.compute.outputs.ASSET_EXTENSION}}
