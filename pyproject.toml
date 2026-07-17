@@ -67,7 +67,7 @@ pydocstyle = "^6.3.0"
 pylint = "^4.0.4"
 pillow = "^12.0.0"
 pytest-cov = "^7.0.0"
-black = "^25.11.0"
+black = "^26.0.0"
 nuitka = "2.8.10"
 
 [tool.poetry.group.docs]
