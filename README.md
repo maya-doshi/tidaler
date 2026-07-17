@@ -1,9 +1,5 @@
 # tidaler! (download from tidal)
 
-fork of tidal_dl_ng by exislow (the original repo and account disappeared). this fork exists to maintain functionality, and add some targeted improvements.
-
-my main focus is the cli. gui support is still included, but i don’t use it, so gui fixes are lower priority. patches are welcome.
-
 [![Release](https://img.shields.io/github/v/release/maya-doshi/tidaler)](https://img.shields.io/github/v/release/maya-doshi/tidaler)
 [![Build status](https://img.shields.io/github/actions/workflow/status/maya-doshi/tidaler/release-or-test-build.yml)](https://github.com/maya-doshi/tidaler/actions/workflows/release-or-test-build.yml)
 [![Commit activity](https://img.shields.io/github/commit-activity/m/maya-doshi/tidaler)](https://img.shields.io/github/commit-activity/m/maya-doshi/tidaler)
@@ -206,7 +202,7 @@ You need to activate `download_dolby_atmos` in the settings. Then, if an item is
 
 ## Contributors
 
-mainly exislow
+fork of tidal_dl_ng by exislow (the original repo and account disappeared). this fork exists to maintain functionality, and add some targeted improvements.
 
 Thanks to all, who have contributed to this project!
 
