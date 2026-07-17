@@ -1079,18 +1079,18 @@ files = [
 
 [[package]]
 name = "mkdocstrings"
-version = "0.30.1"
+version = "1.0.6"
 description = "Automatic documentation from sources, for MkDocs."
 optional = false
-python-versions = ">=3.9"
+python-versions = ">=3.10"
 groups = ["docs"]
 files = [
-    {file = "mkdocstrings-0.30.1-py3-none-any.whl", hash = "sha256:41bd71f284ca4d44a668816193e4025c950b002252081e387433656ae9a70a82"},
-    {file = "mkdocstrings-0.30.1.tar.gz", hash = "sha256:84a007aae9b707fb0aebfc9da23db4b26fc9ab562eb56e335e9ec480cb19744f"},
+    {file = "mkdocstrings-1.0.6-py3-none-any.whl", hash = "sha256:2703708697487d1b6d6d7b412e176fa436edf120c1bf81dc9e126b12d00893c7"},
+    {file = "mkdocstrings-1.0.6.tar.gz", hash = "sha256:a0b8c2bdd29a6416c80d717aa369bbf7831946bd9f23c2a66db1b1dbe7693dbd"},
 ]
 
 [package.dependencies]
-Jinja2 = ">=2.11.1"
+Jinja2 = ">=3.1"
 Markdown = ">=3.6"
 MarkupSafe = ">=1.1"
 mkdocs = ">=1.6"
@@ -2501,4 +2501,4 @@ gui = ["pyqtdarktheme-fork", "pyside6"]
 [metadata]
 lock-version = "2.1"
 python-versions = ">=3.12,<3.14"
-content-hash = "19b4554943935d485280fa07e2eb77d9d839d742a584b01f76d532ac9ea17080"
+content-hash = "fe2e101dd1119adb40a563c0b9d31b7dca7ffc5a971a5055a0f0f44a66c5ab68"
