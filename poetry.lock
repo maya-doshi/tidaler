@@ -627,32 +627,49 @@ dev = ["flake8", "markdown", "twine", "wheel"]
 
 [[package]]
 name = "griffe"
-version = "1.15.0"
+version = "2.3.2"
 description = "Signatures for entire Python programs. Extract the structure, the frame, the skeleton of your project, to generate API documentation or find breaking changes in your API."
 optional = false
-python-versions = ">=3.10"
+python-versions = ">=3.11"
 groups = ["docs"]
 files = [
-    {file = "griffe-1.15.0-py3-none-any.whl", hash = "sha256:6f6762661949411031f5fcda9593f586e6ce8340f0ba88921a0f2ef7a81eb9a3"},
-    {file = "griffe-1.15.0.tar.gz", hash = "sha256:7726e3afd6f298fbc3696e67958803e7ac843c1cfe59734b6251a40cdbfb5eea"},
+    {file = "griffe-2.3.2-py3-none-any.whl", hash = "sha256:31f5217d19c7e732893260d558f92298c4c9c9d2b50f930a1e6dec3f6feb63cb"},
+    {file = "griffe-2.3.2.tar.gz", hash = "sha256:8625bf98dbb02edb291aef77f2f1a17ae6c62d32a764f5bfed009e6010b2d538"},
+]
+
+[package.dependencies]
+griffecli = "2.3.2"
+griffelib = "2.3.2"
+
+[package.extras]
+pypi = ["griffelib[pypi] (==2.3.2)"]
+
+[[package]]
+name = "griffecli"
+version = "2.3.2"
+description = "Signatures for entire Python programs. Extract the structure, the frame, the skeleton of your project, to generate API documentation or find breaking changes in your API."
+optional = false
+python-versions = ">=3.11"
+groups = ["docs"]
+files = [
+    {file = "griffecli-2.3.2-py3-none-any.whl", hash = "sha256:54770415ad6f4b650d1c7af606d5db85c8e75591114b4b714c081a29ff00d986"},
+    {file = "griffecli-2.3.2.tar.gz", hash = "sha256:d9daf7aaef8ac38fb29680a3397cc66300f3fc17c68c909a26446f06df0b44dd"},
 ]
 
 [package.dependencies]
 colorama = ">=0.4"
-
-[package.extras]
-pypi = ["pip (>=24.0)", "platformdirs (>=4.2)", "wheel (>=0.42)"]
+griffelib = "2.3.2"
 
 [[package]]
 name = "griffelib"
-version = "2.1.0"
+version = "2.3.2"
 description = "Signatures for entire Python programs. Extract the structure, the frame, the skeleton of your project, to generate API documentation or find breaking changes in your API."
 optional = false
-python-versions = ">=3.10"
+python-versions = ">=3.11"
 groups = ["docs"]
 files = [
-    {file = "griffelib-2.1.0-py3-none-any.whl", hash = "sha256:cc7b3d2d2865ad0b909fcc38086e3f554b5ea7acbaa7bbb7ecaa3f5dfb7d9f00"},
-    {file = "griffelib-2.1.0.tar.gz", hash = "sha256:762a186d2c6fd6794d4ea20d428d597ffb857cb56b66421651cbba15bdd5e813"},
+    {file = "griffelib-2.3.2-py3-none-any.whl", hash = "sha256:8e710afededd5607f95bf3c8ccc175ee306e7084459faf27b9f9f44ef2a7a274"},
+    {file = "griffelib-2.3.2.tar.gz", hash = "sha256:df00c7a0dee3d86268d76788997a1859272cb1fb7b865658e043d2c0c3d52e60"},
 ]
 
 [package.extras]
@@ -2501,4 +2518,4 @@ gui = ["pyqtdarktheme-fork", "pyside6"]
 [metadata]
 lock-version = "2.1"
 python-versions = ">=3.12,<3.14"
-content-hash = "19b4554943935d485280fa07e2eb77d9d839d742a584b01f76d532ac9ea17080"
+content-hash = "d4b86f307489ced8516ab9039a8deae5d19f65c9c3e20f3cd577ff5e2b94abb2"
