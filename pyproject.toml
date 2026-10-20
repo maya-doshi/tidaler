@@ -76,7 +76,7 @@ optional = true
 [tool.poetry.group.docs.dependencies]
 mkdocs = "^1.6.1"
 mkdocs-material = "^9.5.44"
-mkdocstrings = { extras = ["python"], version = "^0.30.0" }
+mkdocstrings = { extras = ["python"], version = "^1.0.0" }
 griffe = "^1.5.1"
 
 [build-system]
