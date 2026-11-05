@@ -1,6 +1,6 @@
 # Local ISRC release
 
-Version: **0.1.8+isrc.1**. This is a local fork build, not an upstream release.
+Version: **0.1.8+isrc.2**. This is a local fork build, not an upstream release.
 
 ## Windows CLI
 
@@ -24,9 +24,39 @@ require conversion. Login and settings use Tidaler's normal configuration folder
 With Python 3.12 or 3.13, install the wheel from `dist`:
 
 ```powershell
-py -3.13 -m pip install ".\dist\tidaler-0.1.8+isrc.1-py3-none-any.whl"
+py -3.13 -m pip install ".\dist\tidaler-0.1.8+isrc.2-py3-none-any.whl"
 tidaler isrc USSM12209515
 ```
+
+## Batch integration
+
+```powershell
+.\tidaler.exe isrc-batch TCAFX2133359 USSM12209515
+.\tidaler.exe config-json
+.\tidaler.exe download-resolved 205851680 --isrc TCAFX2133359 --folder "D:\songs\downloads" --require-flac
+.\tidaler.exe download-batch --list resolved.json --delay 0
+```
+
+`isrc-batch` logs in once, sends at most 20 ISRCs per filter request, verifies candidates,
+and returns JSON keyed by ISRC. A batch result below your requested quality tier falls back
+to individual lookup. Positive matches are cached for seven days in `isrc-cache.sqlite3`
+beside settings, scoped by account, country, and quality. `--refresh` bypasses this cache.
+Failures are not cached as empty matches. Rate-limit errors stop lookup; retry later.
+
+`download-resolved` verifies the ID's ISRC and availability directly instead of repeating
+the ISRC search. An unavailable or changed ID falls back to a fresh lookup. The command
+repairs/verifies the requested folder and checks FLAC settings before downloading.
+
+`resolved.json` is an array of 1–20 jobs, for example:
+
+```json
+[{"id":"job-1","track_id":205851680,"isrc":"TCAFX2133359","folder":"D:\\songs\\downloads","require_flac":true}]
+```
+
+`download-batch` authenticates once and downloads those jobs sequentially. Stdout contains
+JSON-line `running`, `done`, and `error` events carrying the job ID; progress goes to stderr.
+A failed song does not prevent later songs from downloading. `--delay` sets the minimum
+interval between song starts. Sargam also verifies saved files before marking a job done.
 
 ## Rebuild
 

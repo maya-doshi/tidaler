@@ -1,6 +1,7 @@
 """Validated ISRC lookups through the authenticated TIDAL client."""
 
 import re
+from contextlib import nullcontext
 from typing import Any
 
 import requests
@@ -37,6 +38,22 @@ def normalize_isrc(value: str) -> str:
 class _LookupHTTP(requests.Session):
     """Bound lookup requests with a timeout and retries for transient GET failures."""
 
+    def __init__(self) -> None:
+        """Reuse connections and retry transient server errors without retrying rate limits immediately."""
+        super().__init__()
+        self.mount(
+            "https://",
+            HTTPAdapter(
+                max_retries=Retry(
+                    total=2,
+                    backoff_factor=0.5,
+                    status_forcelist=(500, 502, 503, 504),
+                    allowed_methods=frozenset({"GET"}),
+                    respect_retry_after_header=False,
+                )
+            ),
+        )
+
     def request(self, method: str, url: str | bytes, *args: Any, **kwargs: Any) -> requests.Response:
         """Send a request using the project timeout unless one is supplied."""
         if len(args) < 7:  # requests also permits timeout as a positional argument.
@@ -44,12 +61,13 @@ class _LookupHTTP(requests.Session):
         return super().request(method, url, *args, **kwargs)
 
 
-def tracks_by_isrc(session: Session, value: str) -> list[Track]:
+def tracks_by_isrc(session: Session, value: str, reuse_transport: bool = False) -> list[Track]:
     """Find distinct, playable tracks whose ISRC exactly matches the input.
 
     Args:
         session (Session): Authenticated TIDAL session; its country is used for lookup.
         value (str): Compact or hyphenated ISRC.
+        reuse_transport (bool): Reuse a bounded batch transport when already installed.
 
     Returns:
         list[Track]: Matching tracks, in API order, without duplicate IDs.
@@ -63,7 +81,7 @@ def tracks_by_isrc(session: Session, value: str) -> list[Track]:
     original_http: requests.Session = session.request_session
     # This helper is used synchronously by the CLI. Keep its transport policy
     # local to the lookup so downloads and the GUI retain their own policies.
-    with _LookupHTTP() as http:
+    with nullcontext(original_http) if reuse_transport else _LookupHTTP() as http:
         retries: Retry = Retry(
             total=2,
             backoff_factor=0.5,

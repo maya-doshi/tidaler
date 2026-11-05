@@ -79,6 +79,11 @@ If you would like to use the GUI version as a binary, have a look at the
 
 ### Look up a track by ISRC
 
+For queues, `tidaler isrc-batch CODE1 CODE2 ...` resolves codes in batches of 20 with one
+login and caches successful matches by account, country, and requested quality. Use
+`tidaler download-batch --list resolved.json` to download up to 20 resolved tracks with one
+login and individual result events. See [batch integration](docs/local-release.md#batch-integration).
+
 Resolve an ISRC using your normal Tidaler login (no separate developer token):
 
 ```powershell

@@ -2,11 +2,12 @@
 import json
 import signal
 import sys
+import time
 from collections.abc import Callable
 from contextlib import redirect_stdout
 from datetime import datetime
 from pathlib import Path
-from typing import Annotated
+from typing import Annotated, cast
 from urllib.parse import urlparse
 
 import typer
@@ -30,7 +31,8 @@ from tidaler.constants import CTX_TIDAL, FAVORITES, MediaType
 from tidaler.download import Download
 from tidaler.helper.cli import parse_timestamp
 from tidaler.helper.isrc import normalize_isrc, tracks_by_isrc
-from tidaler.helper.path import get_format_template, path_file_settings
+from tidaler.helper.isrc_batch import resolve_batch, resolved_track
+from tidaler.helper.path import get_format_template, path_config_base, path_file_settings
 from tidaler.helper.tidal import (
     all_artist_album_ids,
     get_tidal_media_id,
@@ -40,6 +42,7 @@ from tidaler.helper.tidal import (
 )
 from tidaler.helper.wrapper import LoggerWrapped
 from tidaler.model.cfg import HelpSettings
+from tidaler.model.cfg import Settings as DownloadSettings
 
 app = typer.Typer(context_settings={"help_option_names": ["-h", "--help"]}, add_completion=False)
 app_dl_fav = typer.Typer(
@@ -79,7 +82,7 @@ def callback_app(
 
 def _handle_track_or_video(
     dl: Download, ctx: typer.Context, item: str, media: object, file_template: str, idx: int, urls_pos_last: int
-) -> None:
+) -> bool:
     """Handle downloading a track or video item.
 
     Args:
@@ -94,13 +97,14 @@ def _handle_track_or_video(
     settings = ctx.obj[CTX_TIDAL].settings
     download_delay: bool = bool(settings.data.download_delay and idx < urls_pos_last)
 
-    dl.item(
+    success, _ = dl.item(
         media=media,
         file_template=file_template,
         download_delay=download_delay,
         quality_audio=settings.data.quality_audio,
         quality_video=settings.data.quality_video,
     )
+    return success
 
 
 def _handle_album_playlist_mix_artist(
@@ -212,13 +216,14 @@ def _process_url(
     return True
 
 
-def _download(ctx: typer.Context, urls: list[str], try_login: bool = True) -> bool:
+def _download(ctx: typer.Context, urls: list[str], try_login: bool = True, resolved: Track | None = None) -> bool:
     """Invokes download function and tracks progress.
 
     Args:
         ctx (typer.Context): The typer context object.
         urls (list[str]): The list of URLs to download.
         try_login (bool, optional): If true, attempts to login to TIDAL. Defaults to True.
+        resolved (Track | None): A verified single track, avoiding duplicate metadata requests.
 
     Returns:
         bool: True if ran successfully.
@@ -274,6 +279,15 @@ def _download(ctx: typer.Context, urls: list[str], try_login: bool = True) -> bo
     with Live(progress_group, refresh_per_second=20, vertical_overflow="visible"):
         try:
             for idx, item in enumerate(urls):
+                if resolved is not None and len(urls) == 1:
+                    if handling_app.event_abort.is_set():
+                        return False
+                    file_template = get_format_template(MediaType.TRACK, settings)
+                    if not isinstance(file_template, str):
+                        return False
+                    if not _handle_track_or_video(dl, ctx, item, resolved, file_template, idx, urls_pos_last):
+                        return False
+                    continue
                 if _process_url(dl, ctx, handling_app, item, idx, urls_pos_last) is False:
                     return False
         finally:
@@ -489,6 +503,173 @@ def lookup_isrc(
     else:
         for track in tracks:
             typer.echo(f"https://tidal.com/browse/track/{track.id}")
+
+
+@app.command(name="config-json")
+def config_json() -> None:
+    """Read integration capabilities and download settings in one process, without tokens."""
+    with redirect_stdout(sys.stderr):
+        settings = Settings()
+    fields = ("download_base_path", "quality_audio", "extract_flac", "download_dolby_atmos")
+    typer.echo(json.dumps({"protocol": 2, **{key: getattr(settings.data, key) for key in fields}}))
+
+
+@app.command(name="isrc-batch")
+def lookup_isrc_batch(
+    ctx: typer.Context,
+    codes: Annotated[list[str], typer.Argument()],
+    refresh: Annotated[bool, typer.Option("--refresh", help="Ignore cached matches.")] = False,
+) -> None:
+    """Resolve codes in batches of 20 using one login; print a JSON map keyed by ISRC."""
+    try:
+        normalized = [normalize_isrc(code) for code in codes]
+    except ValueError as error:
+        raise typer.BadParameter(str(error)) from None
+    try:
+        with redirect_stdout(sys.stderr):
+            _integration_login(ctx)
+            tidal = ctx.obj[CTX_TIDAL]
+            quality = str(tidal.settings.data.quality_audio)
+            matches = resolve_batch(
+                tidal.session, normalized, quality, Path(path_config_base()) / "isrc-cache.sqlite3", refresh
+            )
+        typer.echo(
+            json.dumps(
+                {"matches": matches, "quality": quality, "country": tidal.session.country_code}, ensure_ascii=False
+            )
+        )
+    except (RequestException, TidalAPIError, OSError, KeyError, ValueError, TypeError):
+        typer.echo("TIDAL batch lookup failed. Check login/connection; wait before retrying if rate limited.", err=True)
+        raise typer.Exit(1) from None
+
+
+def _integration_login(ctx: typer.Context) -> None:
+    """Authenticate once and abort before lookup if login fails."""
+    if not ctx.invoke(login, ctx):
+        typer.echo("TIDAL login failed. Run 'tidaler login' and retry.", err=True)
+        raise typer.Exit(1)
+
+
+def _prepare_resolved_download(folder: Path, require_flac: bool) -> str:
+    """Validate current settings and persist/verify the requested destination before download."""
+    if not folder.is_absolute():
+        message = "Download folder must be an absolute path"
+        raise ValueError(message)
+    settings = Settings()
+    data = cast(DownloadSettings, settings.data)
+    if Path(data.download_base_path).expanduser().resolve() != folder.resolve():
+        settings.set_option("download_base_path", str(folder))
+        settings.save()
+        saved = json.loads(Path(path_file_settings()).read_text(encoding="utf-8"))
+        if Path(saved["download_base_path"]).expanduser().resolve() != folder.resolve():
+            message = "Download folder repair failed"
+            raise ValueError(message)
+    quality = str(data.quality_audio)
+    if require_flac and (
+        quality not in ("LOSSLESS", "HI_RES_LOSSLESS") or not data.extract_flac or data.download_dolby_atmos
+    ):
+        message = "Get in FLAC requires lossless quality, FLAC extraction, and stereo output"
+        raise ValueError(message)
+    return quality
+
+
+@app.command(name="download-resolved")
+def download_resolved(
+    ctx: typer.Context,
+    track_id: Annotated[int, typer.Argument(min=1)],
+    isrc: Annotated[str, typer.Option("--isrc")],
+    folder: Annotated[Path, typer.Option("--folder")],
+    require_flac: Annotated[bool, typer.Option("--require-flac")] = False,
+) -> None:
+    """Download a resolved ID, verifying identity and repairing the folder in the same process."""
+    try:
+        code = normalize_isrc(isrc)
+        quality = _prepare_resolved_download(folder, require_flac)
+    except (OSError, KeyError, ValueError) as error:
+        typer.echo(f"Tidaler configuration error: {error}", err=True)
+        raise typer.Exit(1) from None
+    try:
+        _integration_login(ctx)
+        track = resolved_track(
+            ctx.obj[CTX_TIDAL].session, track_id, code, quality, Path(path_config_base()) / "isrc-cache.sqlite3"
+        )
+        if not _download(ctx, [f"https://tidal.com/browse/track/{track.id}"], try_login=False, resolved=track):
+            raise typer.Exit(1)
+    except (RequestException, TidalAPIError, ValueError):
+        typer.echo("TIDAL resolved download failed. Check login, connection, and track availability.", err=True)
+        raise typer.Exit(1) from None
+
+
+def _batch_event(job_id: str, status: str, **extra: object) -> None:
+    """Emit a flushed machine-readable per-song event on stdout."""
+    typer.echo(json.dumps({"tidaler_event": True, "id": job_id, "status": status, **extra}), color=False)
+    sys.stdout.flush()
+
+
+def _batch_job(ctx: typer.Context, job: dict[str, object]) -> None:
+    """Download one verified batch member; errors remain isolated to its queue entry."""
+    job_id = str(job["id"])
+    _batch_event(job_id, "running")
+    try:
+        with redirect_stdout(sys.stderr):
+            quality = _prepare_resolved_download(Path(str(job["folder"])), bool(job.get("require_flac")))
+    except (OSError, KeyError, ValueError):
+        _batch_event(job_id, "error", error="Tidaler configuration error: check the download folder and FLAC settings.")
+        return
+    try:
+        with redirect_stdout(sys.stderr):
+            code = normalize_isrc(str(job["isrc"]))
+            track = resolved_track(
+                ctx.obj[CTX_TIDAL].session,
+                int(str(job["track_id"])),
+                code,
+                quality,
+                Path(path_config_base()) / "isrc-cache.sqlite3",
+            )
+            success = _download(ctx, [f"https://tidal.com/browse/track/{track.id}"], try_login=False, resolved=track)
+        if success:
+            _batch_event(job_id, "done", track_id=track.id, isrc=code)
+        else:
+            _batch_event(job_id, "error", error="Download did not finish")
+    except (RequestException, TidalAPIError, OSError, KeyError, ValueError, typer.Exit):
+        _batch_event(
+            job_id, "error", error="TIDAL download failed. Check connection, settings, and track availability."
+        )
+
+
+@app.command(name="download-batch")
+def download_batch(
+    ctx: typer.Context,
+    list_file: Annotated[Path, typer.Option("--list", exists=True, dir_okay=False)],
+    delay: Annotated[float, typer.Option("--delay", min=0, max=600, help="Minimum seconds between song starts.")] = 0,
+) -> None:
+    """Download a JSON list of resolved jobs sequentially with one login and per-song JSON events."""
+    try:
+        jobs = json.loads(list_file.read_text(encoding="utf-8"))
+        if not isinstance(jobs, list) or not jobs or len(jobs) > 20:
+            typer.echo("Provide between 1 and 20 resolved jobs.", err=True)
+            raise typer.Exit(2)
+        for job in jobs:
+            normalize_isrc(job["isrc"])
+            if not str(job["track_id"]).isdigit() or not Path(job["folder"]).is_absolute() or not job.get("id"):
+                typer.echo("Invalid resolved job.", err=True)
+                raise typer.Exit(2)
+    except (OSError, KeyError, TypeError, ValueError):
+        typer.echo("Invalid resolved job list.", err=True)
+        raise typer.Exit(2) from None
+    try:
+        with redirect_stdout(sys.stderr):
+            _integration_login(ctx)
+    except (RequestException, TidalAPIError, EOFError, OSError, ValueError):
+        typer.echo("TIDAL batch login failed. Run 'tidaler login' and retry.", err=True)
+        raise typer.Exit(1) from None
+    last_start = 0.0
+    for job in jobs:
+        remaining = delay - (time.monotonic() - last_start)
+        if remaining > 0:
+            time.sleep(remaining)
+        last_start = time.monotonic()
+        _batch_job(ctx, job)
 
 
 @app.command(name="dl")
