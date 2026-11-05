@@ -1,6 +1,6 @@
 # Local ISRC release
 
-Version: **0.1.8+isrc.2**. This is a local fork build, not an upstream release.
+Version: **0.1.8+isrc.3**. This is a local fork build, not an upstream release.
 
 ## Windows CLI
 
@@ -24,7 +24,7 @@ require conversion. Login and settings use Tidaler's normal configuration folder
 With Python 3.12 or 3.13, install the wheel from `dist`:
 
 ```powershell
-py -3.13 -m pip install ".\dist\tidaler-0.1.8+isrc.2-py3-none-any.whl"
+py -3.13 -m pip install ".\dist\tidaler-0.1.8+isrc.3-py3-none-any.whl"
 tidaler isrc USSM12209515
 ```
 
@@ -57,6 +57,21 @@ repairs/verifies the requested folder and checks FLAC settings before downloadin
 JSON-line `running`, `done`, and `error` events carrying the job ID; progress goes to stderr.
 A failed song does not prevent later songs from downloading. `--delay` sets the minimum
 interval between song starts. Sargam also verifies saved files before marking a job done.
+
+## Search for songs without an ISRC
+
+```powershell
+.	idaler.exe search-batch --list songs.json --delay 0.2
+```
+
+`songs.json` is an array of 1–50 songs, `[{"id":"job-1","title":"Delicate","artist":"Taylor Swift"}]`.
+It logs in once and searches each title with its artist, then (if that finds nothing) the title without
+bracketed parts, since TIDAL keeps "(Taylor's Version)" or "(Live)" in a separate version field. It prints
+one JSON document keyed by song id: every playable candidate with its ID, ISRC, title, `version`, artists,
+album, `duration` (seconds) and `quality_rank`. Choosing the right candidate is up to the caller; the chosen
+ID and its ISRC go to `download-resolved` / `download-batch` like any ISRC match, so the file is still
+verified by ISRC. A rate limit or API error exits 1 and is never reported as "no match".
+`config-json` lists the supported integration commands under `commands`.
 
 ## Rebuild
 

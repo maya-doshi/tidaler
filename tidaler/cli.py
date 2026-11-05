@@ -32,6 +32,7 @@ from tidaler.download import Download
 from tidaler.helper.cli import parse_timestamp
 from tidaler.helper.isrc import normalize_isrc, tracks_by_isrc
 from tidaler.helper.isrc_batch import resolve_batch, resolved_track
+from tidaler.helper.search_batch import MAX_JOBS, search_batch
 from tidaler.helper.path import get_format_template, path_config_base, path_file_settings
 from tidaler.helper.tidal import (
     all_artist_album_ids,
@@ -511,7 +512,8 @@ def config_json() -> None:
     with redirect_stdout(sys.stderr):
         settings = Settings()
     fields = ("download_base_path", "quality_audio", "extract_flac", "download_dolby_atmos")
-    typer.echo(json.dumps({"protocol": 2, **{key: getattr(settings.data, key) for key in fields}}))
+    commands = ["isrc-batch", "download-resolved", "download-batch", "search-batch"]
+    typer.echo(json.dumps({"protocol": 2, "commands": commands, **{key: getattr(settings.data, key) for key in fields}}))
 
 
 @app.command(name="isrc-batch")
@@ -540,6 +542,43 @@ def lookup_isrc_batch(
         )
     except (RequestException, TidalAPIError, OSError, KeyError, ValueError, TypeError):
         typer.echo("TIDAL batch lookup failed. Check login/connection; wait before retrying if rate limited.", err=True)
+        raise typer.Exit(1) from None
+
+
+@app.command(name="search-batch")
+def search_batch_command(
+    ctx: typer.Context,
+    list_file: Annotated[Path, typer.Option("--list", exists=True, dir_okay=False)],
+    delay: Annotated[float, typer.Option("--delay", min=0, max=10, help="Seconds between searches.")] = 0.2,
+) -> None:
+    """Search a JSON list of {id, title, artist} with one login; print candidates keyed by id.
+
+    For songs without an ISRC. Every candidate carries its ISRC, so the caller downloads its choice
+    with download-resolved / download-batch exactly like an ISRC match.
+    """
+    try:
+        jobs = json.loads(list_file.read_text(encoding="utf-8"))
+        if not isinstance(jobs, list) or not jobs or len(jobs) > MAX_JOBS:
+            typer.echo(f"Provide between 1 and {MAX_JOBS} songs to search.", err=True)
+            raise typer.Exit(2)
+        for job in jobs:
+            if not isinstance(job, dict) or not str(job.get("id") or "") or not str(job.get("title") or "").strip():
+                typer.echo("Each song needs an id and a title.", err=True)
+                raise typer.Exit(2)
+    except (OSError, TypeError, ValueError):
+        typer.echo("Invalid search list.", err=True)
+        raise typer.Exit(2) from None
+    try:
+        with redirect_stdout(sys.stderr):
+            _integration_login(ctx)
+            session = ctx.obj[CTX_TIDAL].session
+            results = search_batch(session, jobs, delay)
+        typer.echo(json.dumps({"results": results, "country": session.country_code}, ensure_ascii=False))
+    except TooManyRequests:
+        typer.echo("TIDAL rate limit reached. Wait before searching again.", err=True)
+        raise typer.Exit(1) from None
+    except (RequestException, TidalAPIError, OSError, KeyError, ValueError, TypeError):
+        typer.echo("TIDAL search failed. Check login/connection, then retry.", err=True)
         raise typer.Exit(1) from None
 
 
