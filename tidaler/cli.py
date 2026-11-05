@@ -1,13 +1,16 @@
 #!/usr/bin/env python
+import json
 import signal
 import sys
 from collections.abc import Callable
+from contextlib import redirect_stdout
 from datetime import datetime
 from pathlib import Path
 from typing import Annotated
 from urllib.parse import urlparse
 
 import typer
+from requests.exceptions import RequestException
 from rich.console import Console, Group
 from rich.live import Live
 from rich.progress import (
@@ -18,12 +21,15 @@ from rich.progress import (
     TextColumn,
 )
 from rich.table import Table
+from tidalapi.exceptions import TidalAPIError, TooManyRequests
+from tidalapi.media import Track
 
 from tidaler import __version__
 from tidaler.config import HandlingApp, Settings, Tidal
 from tidaler.constants import CTX_TIDAL, FAVORITES, MediaType
 from tidaler.download import Download
 from tidaler.helper.cli import parse_timestamp
+from tidaler.helper.isrc import normalize_isrc, tracks_by_isrc
 from tidaler.helper.path import get_format_template, path_file_settings
 from tidaler.helper.tidal import (
     all_artist_album_ids,
@@ -360,6 +366,129 @@ def logout() -> bool:
         print("You have been successfully logged out.")
 
     return result
+
+
+def _lookup_isrc_tracks(ctx: typer.Context, normalized: str) -> list[Track]:
+    """Authenticate and resolve tracks, reporting safe errors on stderr.
+
+    Args:
+        ctx (typer.Context): CLI context to populate during login.
+        normalized (str): Validated ISRC.
+
+    Returns:
+        list[Track]: Playable matching tracks.
+
+    Raises:
+        typer.Exit: If authentication or lookup fails.
+    """
+    try:
+        # Keep stdout suitable for piping URLs or parsing JSON, including at login.
+        with redirect_stdout(sys.stderr):
+            logged_in: bool = ctx.invoke(login, ctx)
+        if not logged_in:
+            typer.echo("TIDAL login failed. Run 'tidaler login' and try again.", err=True)
+            raise typer.Exit(1)
+        return tracks_by_isrc(ctx.obj[CTX_TIDAL].session, normalized)
+    except TooManyRequests:
+        typer.echo("TIDAL rate limit reached. Wait before retrying the ISRC lookup.", err=True)
+        raise typer.Exit(1) from None
+    except (RequestException, TidalAPIError, KeyError, ValueError):
+        # Do not echo server response bodies, URLs with credentials, or tokens.
+        typer.echo("TIDAL ISRC lookup failed. Check your connection and login, then retry.", err=True)
+        raise typer.Exit(1) from None
+
+
+def _isrc_record(track: Track, isrc: str) -> dict[str, object]:
+    """Return JSON-safe metadata for a matching track.
+
+    Args:
+        track (Track): Matching TIDAL track.
+        isrc (str): Normalized ISRC.
+
+    Returns:
+        dict[str, object]: Public metadata and canonical track URL.
+    """
+    return {
+        "id": track.id,
+        "isrc": isrc,
+        "title": track.name,
+        "artists": [artist.name for artist in track.artists or []],
+        "album": track.album.name if track.album else None,
+        "url": f"https://tidal.com/browse/track/{track.id}",
+    }
+
+
+def _download_isrc_match(ctx: typer.Context, tracks: list[Track]) -> None:
+    """Download a unique match, refusing ambiguous editions.
+
+    Args:
+        ctx (typer.Context): Authenticated CLI context.
+        tracks (list[Track]): Non-empty list of matching tracks.
+
+    Raises:
+        typer.Exit: If selection is ambiguous or downloading fails.
+    """
+    if len(tracks) != 1:
+        typer.echo("Several tracks match. Choose one with --track-id:", err=True)
+        for track in tracks:
+            typer.echo(f"{track.id}: https://tidal.com/browse/track/{track.id}", err=True)
+        raise typer.Exit(1)
+    if not _download(ctx, [f"https://tidal.com/browse/track/{tracks[0].id}"], try_login=False):
+        raise typer.Exit(1)
+
+
+@app.command(
+    name="isrc",
+    help="Find playable TIDAL tracks by ISRC. Prints one URL per match; use --json for metadata.",
+)
+def lookup_isrc(
+    ctx: typer.Context,
+    code: Annotated[str, typer.Argument(help="ISRC, compact or hyphenated (for example USSM12209515).")],
+    json_output: Annotated[bool, typer.Option("--json", help="Print track metadata as JSON.")] = False,
+    download_match: Annotated[bool, typer.Option("--download", help="Download a matching track.")] = False,
+    track_id: Annotated[int | None, typer.Option("--track-id", min=1, help="Select a matching TIDAL track ID.")] = None,
+) -> None:
+    """Resolve an ISRC to playable TIDAL URLs using your normal Tidaler login.
+
+    Args:
+        ctx (typer.Context): CLI context holding the authenticated session.
+        code (str): ISRC to resolve.
+        json_output (bool): Emit JSON instead of one URL per line.
+        download_match (bool): Download the selected match.
+        track_id (int | None): Explicit track selection when several editions match.
+
+    Raises:
+        typer.BadParameter: For invalid input or incompatible options.
+        typer.Exit: On authentication, lookup, selection or download failure.
+    """
+    try:
+        normalized: str = normalize_isrc(code)
+    except ValueError as error:
+        raise typer.BadParameter(str(error), param_hint="CODE") from None
+    if json_output and download_match:
+        message: str = "--json cannot be combined with --download."
+        raise typer.BadParameter(message)
+
+    tracks: list[Track] = _lookup_isrc_tracks(ctx, normalized)
+
+    if track_id is not None:
+        tracks = [track for track in tracks if track.id == track_id]
+    if not tracks:
+        if json_output:
+            typer.echo("[]")
+        typer.echo("No playable matching track found for this ISRC and selection.", err=True)
+        raise typer.Exit(1)
+
+    if download_match:
+        _download_isrc_match(ctx, tracks)
+        return
+
+    if json_output:
+        records: list[dict[str, object]] = [_isrc_record(track, normalized) for track in tracks]
+        typer.echo(json.dumps(records, ensure_ascii=False))
+    else:
+        for track in tracks:
+            typer.echo(f"https://tidal.com/browse/track/{track.id}")
 
 
 @app.command(name="dl")

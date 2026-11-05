@@ -1,7 +1,7 @@
 [project]
 name = "tidaler"
 authors = [{ name = "Maya Doshi", email = "<maya-doshi@proton.me>" }]
-version = "0.1.8"
+version = "0.1.8+isrc.1"
 description = "TIDAL Downloader (fork of tidal-dl-ng)"
 readme = "README.md"
 license = "AGPL-3.0-only"
@@ -28,6 +28,11 @@ tdng = "tidaler.gui:gui_activate"
 
 [tool.poetry]
 packages = [{ include = "tidaler" }]
+include = [
+  { path = "tests", format = "sdist" },
+  { path = "scripts", format = "sdist" },
+  { path = "docs/local-release.md", format = "sdist" },
+]
 
 [tool.poetry.dependencies]
 requests = "~2.34.0"

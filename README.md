@@ -77,6 +77,41 @@ tidaler gui
 If you would like to use the GUI version as a binary, have a look at the
 [release page](https://github.com/maya-doshi/tidaler/releases) and download the correct version for your OS.
 
+### Look up a track by ISRC
+
+Resolve an ISRC using your normal Tidaler login (no separate developer token):
+
+```powershell
+tidaler login
+tidaler isrc USSM12209515
+tidaler isrc US-SM1-22-09515 --json
+tidaler isrc USSM12209515 --download
+# If multiple editions match, select an ID from the lookup output:
+tidaler isrc USSM12209515 --download --track-id 123456789
+```
+
+The lookup uses TIDAL OpenAPI v2 through `tidalapi.Session.get_tracks_by_isrc`
+(`GET https://openapi.tidal.com/v2/tracks?filter[isrc]=...`), with your account's
+country and authentication. It validates the code, removes duplicate IDs, and
+returns only playable tracks with an exactly matching ISRC. Lowercase codes,
+standard hyphenated codes, and an `isrc:` prefix are accepted.
+
+Default output is one TIDAL URL per line. `--json` returns an array containing
+`id`, `isrc`, `title`, `artists`, `album`, and `url`. Login messages and
+errors go to stderr. Exit codes are 0 for success, 1 for lookup/login failure or
+no playable match, and 2 for invalid arguments. No match with `--json` emits
+`[]`. `--track-id` filters results; it never permits downloading a different
+ISRC. `--download` requires an explicit selection when multiple tracks match,
+and cannot be combined with `--json`.
+
+GET requests have a 45-second timeout and up to two retries for network/5xx
+failures. Rate limiting reports an error so you can retry later. Availability
+and results depend on your TIDAL account and country; downloading still requires
+the normal paid plan.
+
+See [Local release builds](docs/local-release.md) for the Windows CLI executable,
+wheel, and source distribution.
+
 ## Features
 
 - Download tracks, videos, albums, playlists, your favorites etc.
