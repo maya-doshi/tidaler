@@ -79,6 +79,10 @@ If you would like to use the GUI version as a binary, have a look at the
 
 ### Look up a track by ISRC
 
+For sustained queues, `tidaler worker --role lookup` and `tidaler worker --role download`
+keep separate authenticated sessions alive across jobs. Sargam detects this automatically.
+The workers share API pacing and cooldowns; see [sustained sessions](docs/local-release.md#sustained-sessions-018isrc4).
+
 For queues, `tidaler isrc-batch CODE1 CODE2 ...` resolves codes in batches of 20 with one
 login and caches successful matches by account, country, and requested quality. Use
 `tidaler download-batch --list resolved.json` to download up to 20 resolved tracks with one

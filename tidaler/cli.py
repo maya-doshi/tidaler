@@ -32,8 +32,8 @@ from tidaler.download import Download
 from tidaler.helper.cli import parse_timestamp
 from tidaler.helper.isrc import normalize_isrc, tracks_by_isrc
 from tidaler.helper.isrc_batch import resolve_batch, resolved_track
-from tidaler.helper.search_batch import MAX_JOBS, search_batch
 from tidaler.helper.path import get_format_template, path_config_base, path_file_settings
+from tidaler.helper.search_batch import MAX_JOBS, search_batch
 from tidaler.helper.tidal import (
     all_artist_album_ids,
     get_tidal_media_id,
@@ -512,8 +512,21 @@ def config_json() -> None:
     with redirect_stdout(sys.stderr):
         settings = Settings()
     fields = ("download_base_path", "quality_audio", "extract_flac", "download_dolby_atmos")
-    commands = ["isrc-batch", "download-resolved", "download-batch", "search-batch"]
-    typer.echo(json.dumps({"protocol": 2, "commands": commands, **{key: getattr(settings.data, key) for key in fields}}))
+    commands = ["isrc-batch", "download-resolved", "download-batch", "search-batch", "worker"]
+    typer.echo(
+        json.dumps({"protocol": 2, "commands": commands, **{key: getattr(settings.data, key) for key in fields}})
+    )
+
+
+@app.command(name="worker")
+def persistent_worker(ctx: typer.Context, role: Annotated[str, typer.Option("--role")] = "lookup") -> None:
+    """Serve JSON-lines on stdin/stdout with a sustained lookup or download session."""
+    from tidaler.integration_worker import serve
+
+    if role not in ("lookup", "download"):
+        message = "Role must be lookup or download"
+        raise typer.BadParameter(message)
+    serve(role, ctx)
 
 
 @app.command(name="isrc-batch")

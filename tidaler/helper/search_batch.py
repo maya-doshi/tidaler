@@ -7,6 +7,7 @@ downloaded file can still be verified.
 
 import re
 import time
+from contextlib import nullcontext
 from typing import Any
 
 from tidalapi.media import Track
@@ -67,7 +68,7 @@ def search_batch(session: Session, jobs: list[dict[str, Any]], delay: float = 0.
     """
     results: dict[str, list[dict[str, Any]]] = {}
     original_http = session.request_session
-    with _LookupHTTP() as http:
+    with nullcontext(original_http) if getattr(original_http, "persistent", False) is True else _LookupHTTP() as http:
         session.request_session = http
         try:
             for index, job in enumerate(jobs):

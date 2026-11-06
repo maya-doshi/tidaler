@@ -4,7 +4,7 @@ import json
 import logging
 import sqlite3
 import time
-from contextlib import closing, suppress
+from contextlib import closing, nullcontext, suppress
 from pathlib import Path
 from typing import Any
 
@@ -145,7 +145,7 @@ def resolve_batch(
             results[code] = hit
     pending: list[str] = [code for code in codes if code not in results]
     original_http = session.request_session
-    with _LookupHTTP() as http:
+    with nullcontext(original_http) if getattr(original_http, "persistent", False) is True else _LookupHTTP() as http:
         session.request_session = http
         try:
             for offset in range(0, len(pending), 20):

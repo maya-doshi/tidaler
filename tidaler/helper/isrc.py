@@ -81,6 +81,7 @@ def tracks_by_isrc(session: Session, value: str, reuse_transport: bool = False) 
     original_http: requests.Session = session.request_session
     # This helper is used synchronously by the CLI. Keep its transport policy
     # local to the lookup so downloads and the GUI retain their own policies.
+    reuse_transport = reuse_transport or getattr(original_http, "persistent", False) is True
     with nullcontext(original_http) if reuse_transport else _LookupHTTP() as http:
         retries: Retry = Retry(
             total=2,
@@ -89,7 +90,8 @@ def tracks_by_isrc(session: Session, value: str, reuse_transport: bool = False) 
             allowed_methods=frozenset({"GET"}),
             respect_retry_after_header=False,
         )
-        http.mount("https://", HTTPAdapter(max_retries=retries))
+        if not reuse_transport:
+            http.mount("https://", HTTPAdapter(max_retries=retries))
         session.request_session = http
         try:
             try:

@@ -1,6 +1,6 @@
 # Local ISRC release
 
-Version: **0.1.8+isrc.3**. This is a local fork build, not an upstream release.
+Version: **0.1.8+isrc.4**. This is a local fork build, not an upstream release.
 
 ## Windows CLI
 
@@ -24,11 +24,50 @@ require conversion. Login and settings use Tidaler's normal configuration folder
 With Python 3.12 or 3.13, install the wheel from `dist`:
 
 ```powershell
-py -3.13 -m pip install ".\dist\tidaler-0.1.8+isrc.3-py3-none-any.whl"
+py -3.13 -m pip install ".\dist\tidaler-0.1.8+isrc.4-py3-none-any.whl"
 tidaler isrc USSM12209515
 ```
 
 ## Batch integration
+
+### Sustained sessions (0.1.8+isrc.4)
+
+Sargam automatically uses two private CLI processes when `config-json` advertises `worker`:
+`tidaler worker --role lookup` serves ISRC and title searches; `--role download` serves resolved
+downloads. Each keeps one authenticated session and connection pool across batches. There is no
+HTTP listener. Stdin/stdout carry JSON lines, while diagnostic output goes to stderr.
+
+Login once with `tidaler login` before using workers. A worker loads the saved login on its first
+request and refreshes an expired access token as needed. Workers never invoke interactive login
+or delete credentials on API failure. Refreshed access tokens stay in worker memory; subsequent
+processes can use the saved refresh token. A changed saved login invalidates in-memory search results.
+
+Requests are spaced by at least 0.75 seconds across both workers using `worker-gate.sqlite3` in
+the configuration folder. This is a conservative integration default, not a published TIDAL quota.
+HTTP 429 pauses for at least 60 seconds; HTTP 403 pauses for at least 10 minutes. Longer
+`Retry-After` values are honored, including HTTP dates. A 403 may indicate permissions or account
+access, not just request frequency. These responses are not automatically retried inside a request.
+Sargam retains unfinished songs in the queue and pauses for a manual login when authentication fails.
+
+Successful title searches are cached for one hour in the lookup worker (up to 1,000 entries),
+scoped by session, country, quality, exact title and artist. `refresh: true` bypasses both lookup caches.
+No-match and failed searches are not cached. Download folder repair, current quality settings,
+ISRC validation, and Sargam's saved-file/FLAC checks still apply.
+
+One request per line, with a unique string `request_id`:
+
+```json
+{"request_id":"lookup-1","action":"isrc","codes":["TCAFX2133359"]}
+{"request_id":"lookup-2","action":"search","jobs":[{"id":"song-1","title":"Song","artist":"Artist"}]}
+```
+
+The download role accepts `action: "download"`, a `jobs` array in the resolved manifest format below,
+and an optional `delay`. Responses contain `request_id`, `ok`, and `result`; failures contain
+`reason`, `error`, and `retry_after`. Download events contain `request_id` and `event` with each job's
+ID and `running`/`done`/`error` status. EOF closes the worker. Cancelling an active request terminates
+only that worker; the next request recreates it. Older CLI releases retain Sargam's subprocess flow.
+
+### One-shot commands
 
 ```powershell
 .\tidaler.exe isrc-batch TCAFX2133359 USSM12209515

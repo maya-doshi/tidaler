@@ -23,6 +23,8 @@ try {
     if ($LASTEXITCODE -ne 0 -or $reported -ne $version) { throw "Executable version smoke test failed" }
     & .\dist\tidaler.exe isrc --help
     if ($LASTEXITCODE -ne 0) { throw "Executable ISRC help smoke test failed" }
+    & .\dist\tidaler.exe worker --help
+    if ($LASTEXITCODE -ne 0) { throw "Executable worker help smoke test failed" }
     $archive = "dist\tidaler-$version-windows-x64-cli.zip"
     Compress-Archive -LiteralPath "dist\tidaler.exe", "LICENSE", "docs\local-release.md" -DestinationPath $archive -Force
     & $Python -m pip freeze | Set-Content -Encoding utf8 "dist\build-environment.txt"
