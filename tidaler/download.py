@@ -550,6 +550,7 @@ class Download:
         list_position: int = 0,
         list_total: int = 0,
         event_stop: Event | None = None,
+        on_completed: Callable[[pathlib.Path], None] | None = None,
     ) -> tuple[bool, pathlib.Path | str]:
         """Download a single media item, handling file naming, skipping, and post-processing.
 
@@ -566,6 +567,7 @@ class Download:
             list_position (int, optional): Position in list. Defaults to 0.
             list_total (int, optional): Total items in list. Defaults to 0.
             event_stop (Event | None, optional): Event to stop the download. Defaults to None.
+            on_completed: Called with the final path after a new download finishes post-processing.
 
         Returns:
             tuple[bool, pathlib.Path | str]: (Downloaded, path to file)
@@ -599,7 +601,7 @@ class Download:
         quality_audio_old, quality_video_old = self._adjust_quality_settings(quality_audio, quality_video)
 
         # Step 4: Download and process media
-        download_success = self._download_and_process_media(
+        download_success, path_media_dst = self._download_and_process_media(
             media,
             path_media_dst,
             skip_download,
@@ -609,7 +611,7 @@ class Download:
         )
 
         # Step 5: Post-processing
-        self._perform_post_processing(
+        path_media_dst = self._perform_post_processing(
             media,
             path_media_dst,
             quality_audio,
@@ -621,6 +623,8 @@ class Download:
             event_stop,
         )
 
+        if download_success and not skip_download and on_completed:
+            on_completed(path_media_dst.resolve())
         return download_success, path_media_dst
 
     def _validate_and_prepare_media(
@@ -804,7 +808,7 @@ class Download:
         is_parent_album: bool,
         file_extension_dummy: str,
         event_stop: Event | None = None,
-    ) -> bool:
+    ) -> tuple[bool, pathlib.Path]:
         """Download and process media file.
 
         Args:
@@ -816,16 +820,16 @@ class Download:
             event_stop (Event | None, optional): Event to stop the download. Defaults to None.
 
         Returns:
-            bool: Whether download was successful.
+            tuple[bool, pathlib.Path]: Success and the actual path after stream-format selection.
         """
         if skip_download:
-            return True
+            return True, path_media_dst
 
         # Get stream information and final file extension
         stream_manifest, file_extension, do_flac_extract, media_stream = self._get_stream_info(media)
 
         if stream_manifest is None and isinstance(media, Track):
-            return False
+            return False, path_media_dst
 
         # Update path if extension changed
         if path_media_dst.suffix != file_extension:
@@ -835,7 +839,7 @@ class Download:
         os.makedirs(path_media_dst.parent, exist_ok=True)
 
         # Perform actual download
-        return self._perform_actual_download(
+        success = self._perform_actual_download(
             media,
             path_media_dst,
             stream_manifest,
@@ -844,6 +848,7 @@ class Download:
             media_stream,
             event_stop,
         )
+        return success, path_media_dst
 
     def _get_stream_info(self, media: Track | Video) -> tuple[StreamManifest | None, str, bool, Stream | None]:
         """Get stream information for media.
@@ -1081,7 +1086,7 @@ class Download:
         download_delay: bool,
         skip_file: bool,
         event_stop: Event | None = None,
-    ) -> None:
+    ) -> pathlib.Path:
         """Perform post-processing tasks.
 
         Args:
@@ -1099,7 +1104,7 @@ class Download:
         if self.settings.data.symlink_to_track and not isinstance(media, Video):
             # Determine file extension for symlink
             file_extension = path_media_dst.suffix
-            self.media_move_and_symlink(media, path_media_dst, file_extension)
+            path_media_dst = self.media_move_and_symlink(media, path_media_dst, file_extension)
 
         # Reset quality settings
         if quality_audio_old is not None:
@@ -1126,6 +1131,8 @@ class Download:
                 self.event_abort.wait(time_sleep)
             else:
                 time.sleep(time_sleep)
+
+        return path_media_dst
 
     def media_move_and_symlink(
         self, media: Track | Video, path_media_src: pathlib.Path, file_extension: str
@@ -1174,6 +1181,8 @@ class Download:
             if not skip_file:
                 self.fn_logger.debug(f"Move: {path_media_src} -> {path_media_dst}")
                 moved = self._move_file(path_media_src, path_media_dst, overwrite=True)
+                if not moved:
+                    return path_media_src
 
             # Only replace the source with a symlink once the destination actually exists, otherwise a failed
             # move would leave a broken symlink pointing at a missing file (and the source already unlinked).
