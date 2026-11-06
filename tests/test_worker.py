@@ -221,7 +221,30 @@ def test_download_jobs_reuse_login_and_stop_on_cooldown(sustained: Any, tmp_path
         event = Mock()
         with pytest.raises(WorkerError):
             instance.handle({"action": "download", "jobs": [job, {**job, "id": "later"}]}, event)
-        assert event.call_count == 1
+        assert [call.args[0]["stage"] for call in event.call_args_list] == ["validating", "downloading"]
+
+
+def test_download_event_reports_only_completed_files(sustained: Any, tmp_path: Path) -> None:
+    """The protocol forwards the downloader's final file path and doesn't guess or scan a directory."""
+    instance, _, _ = sustained
+    instance.role = "download"
+    destination = str(tmp_path / "actual.flac")
+
+    def download(*args: Any, **kwargs: Any) -> bool:
+        kwargs["completed_files"].append(destination)
+        return True
+
+    with (
+        patch("tidaler.cli._prepare_resolved_download", return_value="LOSSLESS"),
+        patch.object(worker, "resolved_track", return_value=Mock(id=1)),
+        patch("tidaler.cli._download", side_effect=download),
+    ):
+        event = Mock()
+        instance.handle(
+            {"action": "download", "jobs": [{"id": "song", "track_id": 1, "isrc": CODE, "folder": str(tmp_path)}]},
+            event,
+        )
+    assert event.call_args.args[0]["files"] == [destination]
 
 
 def test_wrong_role_never_authenticates(sustained: Any) -> None:

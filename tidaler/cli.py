@@ -82,7 +82,14 @@ def callback_app(
 
 
 def _handle_track_or_video(
-    dl: Download, ctx: typer.Context, item: str, media: object, file_template: str, idx: int, urls_pos_last: int
+    dl: Download,
+    ctx: typer.Context,
+    item: str,
+    media: object,
+    file_template: str,
+    idx: int,
+    urls_pos_last: int,
+    completed_files: list[str] | None = None,
 ) -> bool:
     """Handle downloading a track or video item.
 
@@ -104,6 +111,7 @@ def _handle_track_or_video(
         download_delay=download_delay,
         quality_audio=settings.data.quality_audio,
         quality_video=settings.data.quality_video,
+        on_completed=(lambda path: completed_files.append(str(path))) if completed_files is not None else None,
     )
     return success
 
@@ -217,7 +225,13 @@ def _process_url(
     return True
 
 
-def _download(ctx: typer.Context, urls: list[str], try_login: bool = True, resolved: Track | None = None) -> bool:
+def _download(
+    ctx: typer.Context,
+    urls: list[str],
+    try_login: bool = True,
+    resolved: Track | None = None,
+    completed_files: list[str] | None = None,
+) -> bool:
     """Invokes download function and tracks progress.
 
     Args:
@@ -286,7 +300,9 @@ def _download(ctx: typer.Context, urls: list[str], try_login: bool = True, resol
                     file_template = get_format_template(MediaType.TRACK, settings)
                     if not isinstance(file_template, str):
                         return False
-                    if not _handle_track_or_video(dl, ctx, item, resolved, file_template, idx, urls_pos_last):
+                    if not _handle_track_or_video(
+                        dl, ctx, item, resolved, file_template, idx, urls_pos_last, completed_files
+                    ):
                         return False
                     continue
                 if _process_url(dl, ctx, handling_app, item, idx, urls_pos_last) is False:
@@ -514,7 +530,14 @@ def config_json() -> None:
     fields = ("download_base_path", "quality_audio", "extract_flac", "download_dolby_atmos")
     commands = ["isrc-batch", "download-resolved", "download-batch", "search-batch", "worker"]
     typer.echo(
-        json.dumps({"protocol": 2, "commands": commands, **{key: getattr(settings.data, key) for key in fields}})
+        json.dumps(
+            {
+                "protocol": 2,
+                "worker_protocol": 2,
+                "commands": commands,
+                **{key: getattr(settings.data, key) for key in fields},
+            }
+        )
     )
 
 

@@ -187,7 +187,7 @@ class Worker:
         for job in request["jobs"]:
             time.sleep(max(0, float(request.get("delay", 0)) - (time.monotonic() - last_start)))
             last_start = time.monotonic()
-            emit({"id": job["id"], "status": "running", "tidaler_event": True})
+            emit({"id": job["id"], "status": "running", "stage": "validating", "tidaler_event": True})
             tidal: Tidal = self.prepare()
             try:
                 quality = _prepare_resolved_download(Path(job["folder"]), job.get("require_flac", False))
@@ -205,8 +205,14 @@ class Worker:
                 track = resolved_track(
                     tidal.session, int(job["track_id"]), job["isrc"], quality, self.base / "isrc-cache.sqlite3"
                 )
+                completed_files: list[str] = []
+                emit({"id": job["id"], "status": "running", "stage": "downloading", "tidaler_event": True})
                 success = _download(
-                    self.ctx, [f"https://tidal.com/browse/track/{track.id}"], try_login=False, resolved=track
+                    self.ctx,
+                    [f"https://tidal.com/browse/track/{track.id}"],
+                    try_login=False,
+                    resolved=track,
+                    completed_files=completed_files,
                 )
                 self.gate.check()  # Download may catch an HTTP exception internally.
                 emit(
@@ -215,6 +221,7 @@ class Worker:
                         "status": "done" if success else "error",
                         "tidaler_event": True,
                         "error": "" if success else "Download did not finish",
+                        "files": completed_files,
                     }
                 )
             except ValueError:

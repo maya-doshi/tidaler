@@ -1,6 +1,6 @@
 # Local ISRC release
 
-Version: **0.1.8+isrc.4**. This is a local fork build, not an upstream release.
+Version: **0.1.8+isrc.5**. This is a local fork build, not an upstream release.
 
 ## Windows CLI
 
@@ -24,11 +24,21 @@ require conversion. Login and settings use Tidaler's normal configuration folder
 With Python 3.12 or 3.13, install the wheel from `dist`:
 
 ```powershell
-py -3.13 -m pip install ".\dist\tidaler-0.1.8+isrc.4-py3-none-any.whl"
+py -3.13 -m pip install ".\dist\tidaler-0.1.8+isrc.5-py3-none-any.whl"
 tidaler isrc USSM12209515
 ```
 
 ## Batch integration
+
+### Exact output paths (0.1.8+isrc.5)
+
+`config-json` now advertises `worker_protocol: 2`. The sustained download worker includes
+`files` in each completed job event, containing the actual absolute output paths after conversion,
+tagging and moves. Skipped or failed transfers do not report new files. Sargam verifies these
+files directly, including their folder, ISRC and requested FLAC format, without rescanning the
+download folder after every song. Older workers retain Sargam's scan-based compatibility path.
+Worker progress events distinguish track/settings validation from downloading. Sargam also
+shows metadata lookup, ISRC/title lookup, file verification, and time spent in the current step.
 
 ### Sustained sessions (0.1.8+isrc.4)
 
